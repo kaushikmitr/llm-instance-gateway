@@ -1,47 +1,150 @@
-
 ---
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
 metadata:
-  name: <GATEWAY-NAME>
+  name: custom-proxy-config
+  namespace: envoy-gateway-system
 spec:
-  gatewayClassName: <GATEWAY-NAME>
-  listeners:
-    - name: http
-      protocol: HTTP
-      port: 8080
-    - name: llm-gw
-      protocol: HTTP
-      port: 8081
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          image: envoyproxy/envoy:v1.31-latest
+      envoyService:
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - name: http-8081
+                  port: 8081
+                  protocol: TCP
+                  targetPort: 8081
+  bootstrap:
+    type: Merge 
+    value: |
+      static_resources:
+        listeners:
+          - name: listener_0
+            address:
+              socket_address:
+                address: 0.0.0.0
+                port_value: 8081
+            filter_chains:
+              - filters:
+                  - name: envoy.filters.network.http_connection_manager
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                      stat_prefix: http
+                      common_http_protocol_options:
+                          idle_timeout: 3599s
+                      codec_type: AUTO
+                      route_config:
+                        name: local_route
+                        response_headers_to_add:
+                          - header:
+                              key: "x-request-id"
+                              value: "%REQ(X-REQUEST-ID)%"
+                        virtual_hosts:      
+                          - name: backend
+                            domains: ["*"]
+                            routes:
+                              - match:
+                                  prefix: "/"
+                                  headers:
+                                    - name: "target-pod"
+                                      present_match: true
+                                route:
+                                  cluster: original_destination_cluster
+                                  timeout: 3599s
+                                typed_per_filter_config:
+                                  envoy.filters.http.ext_proc:
+                                    "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExtProcPerRoute
+                                    disabled: true
+                              - match:
+                                  prefix: "/"
+                                route:  
+                                  cluster: original_destination_cluster
+                                  timeout: 3599s
+                      http_filters:
+                        - name: envoy.filters.http.ext_proc
+                          typed_config:
+                            "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                            failure_mode_allow: false
+                            grpc_service:
+                              envoy_grpc:
+                                cluster_name: ext_proc_cluster
+                            message_timeout: 3599s
+                            processing_mode:
+                              request_header_mode: "SEND"
+                              response_header_mode: "SEND"
+                              request_body_mode: "BUFFERED"
+                              response_body_mode: "NONE"
+                              request_trailer_mode: "SKIP"
+                              response_trailer_mode: "SKIP"
+                        - name: envoy.filters.http.router
+                          typed_config:
+                            "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+        clusters:
+          - name: original_destination_cluster
+            type: ORIGINAL_DST
+            original_dst_lb_config:
+              use_http_header: true
+              http_header_name: "target-pod"
+            connect_timeout: 3599s
+            lb_policy: CLUSTER_PROVIDED
+            dns_lookup_family: V4_ONLY
+            circuit_breakers:
+              thresholds:
+                - priority: DEFAULT
+                  max_connections: 10000
+                  max_pending_requests: 10000
+                  max_requests: 10000
+            common_http_protocol_options:
+              idle_timeout: 3599s
+          - name: ext_proc_cluster
+            connect_timeout: 3599s
+            type: LOGICAL_DNS
+            common_http_protocol_options:
+              idle_timeout: 3599s
+            http2_protocol_options: {}
+            lb_policy: ROUND_ROBIN
+            circuit_breakers:
+              thresholds:
+                - priority: DEFAULT
+                  max_connections: 10000
+                  max_pending_requests: 10000
+                  max_requests: 10000
+            load_assignment:
+              cluster_name: ext_proc_cluster
+              endpoints:
+                - lb_endpoints:
+                    - endpoint:
+                        address:
+                          socket_address:
+                            address: instance-gateway-ext-proc.default.svc.cluster.local
+                            port_value: 9002
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: <GATEWAY-NAME>
+  name: llm-instance-gateway
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: backend-dummy
-spec:
-  endpoints:
-    - fqdn:
-        # Both these values are arbitrary and unused as the PatchPolicy redirects requests.
-        hostname: 'foo.bar.com'
-        port: 8080
+  parametersRef:  
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: custom-proxy-config
+    namespace: envoy-gateway-system
 ---
 apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
+kind: Gateway
 metadata:
-  name: llm-route
+  name: llm-instance-gateway
 spec:
-  parentRefs:
-    - name: inference-gateway
-      sectionName: llm-gw
-  rules:
-  - backendRefs:
-      - group: gateway.envoyproxy.io
-        kind: Backend
-        name: backend-dummy
+  gatewayClassName: llm-instance-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080

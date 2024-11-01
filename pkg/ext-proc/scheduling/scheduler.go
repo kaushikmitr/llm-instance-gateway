@@ -44,12 +44,12 @@ type PodMetricsProvider interface {
 }
 
 // Schedule finds the target pod based on metrics and the requested lora adapter.
-func (s *Scheduler) Schedule(b *LLMRequest) (targetPod *backend.Pod, err error) {
+func (s *Scheduler) Schedule(b *LLMRequest) (targetPod *backend.Pod, targetPodMatrics *backend.Metrics, err error) {
 	klog.V(3).Infof("request: %v; metrics: %+v", b, s.podMetricsProvider.AllPodMetrics())
 	pods, err := s.filter.Filter(b, s.podMetricsProvider.AllPodMetrics())
 	if err != nil || len(pods) == 0 {
-		return nil, fmt.Errorf("failed to apply filter, resulted %v pods, this should never happen: %v", len(pods), err)
+		return nil, nil, fmt.Errorf("failed to apply filter, resulted %v pods, this should never happen: %v", len(pods), err)
 	}
 	i := rand.Intn(len(pods))
-	return &pods[i].Pod, nil
+	return &pods[i].Pod, &pods[i].Metrics, nil
 }

@@ -31,7 +31,7 @@ type Server struct {
 }
 
 type Scheduler interface {
-	Schedule(b *scheduling.LLMRequest) (targetPod *backend.Pod, err error)
+	Schedule(b *scheduling.LLMRequest) (targetPod *backend.Pod, targetPodMatrics *backend.Metrics, err error)
 }
 
 // PodProvider is an interface to provide set of pods in the backend and information such as metrics.
@@ -96,6 +96,9 @@ func (s *Server) Process(srv extProcPb.ExternalProcessor_ProcessServer) error {
 
 // RequestContext stores context information during the life time of an HTTP request.
 type RequestContext struct {
-	TargetPod *backend.Pod
-	Model     string
+	TargetPod           *backend.Pod
+	Model               string
+	RunningQueueAtStart int
+	WaitingQueueAtStart int
+	KVCacheSizeAtStart  float64
 }

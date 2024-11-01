@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: latency-profile-generator
+  labels:
+    name: latency-profile-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: latency-profile-generator
+  template:
+    metadata:
+      labels:
+        name: latency-profile-generator
+    spec:
+      containers:
+        - name: latency-profile-generator
+          image: us-docker.pkg.dev/kaushikmitra-gke-dev/kaushikmitra-docker-repo/llm-ig-latency-profile-benchmarking-script
+          imagePullPolicy: Always
+          command: ["bash", "-c", "./latency_throughput_curve.sh"]
+          env:
+            - name: TOKENIZER
+              value: "meta-llama/Llama-2-7b-hf"
+            - name: BACKEND
+              value: "vllm"
+            - name: IP
+              value: "34.124.143.14"
+            - name: PORT
+              value: "8000"
+            - name: INPUT_LENGTH
+              value: "1024"
+            - name: OUTPUT_LENGTH
+              value: "1024"
+            - name: REQUEST_RATES
+              value: "[1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100]"
+            - name: NUM_PROMPTS_VALUES
+              value: "[100,500,1000,1500,2000,2500,3000,3500,4000,4500,5000,5500,6000,6500,7000,7500,8000,8500,9000,9500,10000]"
+            - name: FILE_PREFIX
+              value: gateway-baseline
+            - name: MODELS
+              value: "meta-llama/Llama-2-7b-hf"
+            - name: SAVE_AGGREGATED_RESULT
+              value: "true"
+            - name: PROMPT_DATASET_FILE
+              value: "ShareGPT_V3_unfiltered_cleaned_split.json"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: latency-profile-generator-service
+  labels:
+    app: latency-profile-generator
+spec:
+  selector:
+    app: latency-profile-generator
+  ports:
+    - protocol: TCP
+      port: 9090
+      targetPort: 9090

@@ -49,7 +49,7 @@ func (s *Server) HandleRequestBody(reqCtx *RequestContext, req *extProcPb.Proces
 	}
 	klog.V(3).Infof("Updated body: %v", updatedBody)
 
-	targetPod, err := s.scheduler.Schedule(llmReq)
+	targetPod, targetPodMetrics, err := s.scheduler.Schedule(llmReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find target pod: %v", err)
 	}
@@ -57,6 +57,9 @@ func (s *Server) HandleRequestBody(reqCtx *RequestContext, req *extProcPb.Proces
 
 	reqCtx.Model = llmReq.Model
 	reqCtx.TargetPod = targetPod
+	reqCtx.KVCacheSizeAtStart = targetPodMetrics.KVCacheUsagePercent
+	reqCtx.RunningQueueAtStart = targetPodMetrics.RunningQueueSize
+	reqCtx.WaitingQueueAtStart = targetPodMetrics.WaitingQueueSize
 
 	// Insert "target-pod" to instruct Envoy to route requests to the specified target pod.
 	headers := []*configPb.HeaderValueOption{
