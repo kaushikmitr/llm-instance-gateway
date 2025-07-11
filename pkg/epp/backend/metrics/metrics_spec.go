@@ -30,6 +30,7 @@ type MetricSpec struct {
 // MetricMapping holds named MetricSpecs.
 type MetricMapping struct {
 	TotalQueuedRequests *MetricSpec
+	TotalRunningRequests *MetricSpec
 	KVCacheUtilization  *MetricSpec
 	LoraRequestInfo     *MetricSpec
 }
@@ -93,10 +94,14 @@ func stringToMetricSpec(specStr string) (*MetricSpec, error) {
 }
 
 // NewMetricMapping creates a MetricMapping from string values.
-func NewMetricMapping(queuedStr, kvUsageStr, loraReqInfoStr string) (*MetricMapping, error) {
+func NewMetricMapping(queuedStr, runningStr, kvUsageStr, loraReqInfoStr string) (*MetricMapping, error) {
 	queuedSpec, err := stringToMetricSpec(queuedStr)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing WaitingRequests: %w", err)
+	}
+	runningSpec, err := stringToMetricSpec(runningStr)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing RunningRequests: %w", err)
 	}
 	kvUsageSpec, err := stringToMetricSpec(kvUsageStr)
 	if err != nil {
@@ -108,6 +113,7 @@ func NewMetricMapping(queuedStr, kvUsageStr, loraReqInfoStr string) (*MetricMapp
 	}
 	mapping := &MetricMapping{
 		TotalQueuedRequests: queuedSpec,
+		TotalRunningRequests: runningSpec,
 		KVCacheUtilization:  kvUsageSpec,
 		LoraRequestInfo:     loraReqInfoSpec,
 	}
